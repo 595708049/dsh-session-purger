@@ -37,7 +37,9 @@
   "files": [
     "index.js",
     "client.js",
-    "cordis.patch.yml"
+    "cordis.patch.yml",
+    "screenshots.json",
+    "screenshots/"
   ],
   "engines": {
     "dsh": ">=0.2.0-rc.1"
