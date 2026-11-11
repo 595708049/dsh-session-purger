@@ -2,7 +2,7 @@
   "name": "dsh-session-purger",
   "version": "0.1.0",
   "type": "module",
-  "description": "彻底删除 DSH 会话：右键删除会话记录，同时清除日志、投影缓存与工作区登记。",
+  "description": "彻底删除 DSH 会话记录 / Permanently delete DSH session records from the sidebar context menu — log directory, projection cache and workspace registration, with a confirmation dialog.",
   "license": "MIT",
   "author": {
     "name": "595708049",
