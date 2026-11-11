@@ -9,8 +9,8 @@ A DSH plugin that permanently deletes session records (logs, projection cache, w
 1. 刷新一次 Web GUI 页面（让客户端包加载）。
 2. 在左侧会话列表上**右键**任意会话 → 「删除会话」。
 3. 选择：
-   - **删除会话（不可恢复）** —— 删除不在使用中的会话；
-   - **强制删除（含进行中会话）** —— 连正在打开的那个会话一起删（删完当前页面会失联，请自行切换或重开）。
+   - **删除会话（不可恢复）** —— 删除不在运行中的会话（打开过但已结束的会话也可以删）；
+   - **强制删除（含进行中会话）** —— 连正在跑一轮的那个会话一起删（删完当前页面会失联，请自行切换或重开）。
 4. 弹出二次确认对话框，点「删除」才真正执行；点「取消」、按 `Esc` 或点空白处都会中止（不会发出任何请求）。
 
 删除成功后侧栏立即消失，输入框的 `@` 候选也会同步消失（两者都来自同一份会话存储列表）。
@@ -29,8 +29,8 @@ A DSH plugin that permanently deletes session records (logs, projection cache, w
 ## 安全说明 / Safety
 
 - 删除**不可恢复**，没有回收站。重要会话请先备份 `~/.dsh/sessions/` 下对应目录。
-- 当前正在进行的会话默认不能删（接口返回 `409 in-use`），要么先切到别的会话，要么用「强制删除」。
-- 宿主侧接口：`POST /dsh-session-purger/delete`，body `{"id": "<sessionId>", "force": false}`；`GET /dsh-session-purger/list` 列出可删除的会话。
+- 只有**正在跑一轮**的会话默认不能删（接口返回 `409 in-use`）；等这一轮结束，或改用「强制删除」。仅仅“打开过”不算占用。
+- 宿主侧接口：`POST /dsh-session-purger/delete`，body `{"id": "<sessionId>", "force": false}`；`GET /dsh-session-purger/list` 列出可删除的会话（每行带 `live` 与 `running`）。
 
 ## 安装 / Install
 
