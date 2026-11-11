@@ -9,13 +9,14 @@ A DSH plugin that permanently deletes session records (logs, projection cache, w
 1. 刷新一次 Web GUI 页面（让客户端包加载）。
 2. 在左侧会话列表上**右键**任意会话 → 「删除会话」。
 3. 选择：
-   - **确认删除（不可恢复）** —— 删除不在使用中的会话；
-   - **强制删除（含正在使用的会话）** —— 连正在打开的那个会话一起删（删完当前页面会失联，请自行切换或重开）。
+   - **删除会话（不可恢复）** —— 删除不在使用中的会话；
+   - **强制删除（含进行中会话）** —— 连正在打开的那个会话一起删（删完当前页面会失联，请自行切换或重开）。
+4. 弹出二次确认对话框，点「删除」才真正执行；点「取消」、按 `Esc` 或点空白处都会中止（不会发出任何请求）。
 
 删除成功后侧栏立即消失，输入框的 `@` 候选也会同步消失（两者都来自同一份会话存储列表）。
 
-![右键菜单](screenshots/01-menu-crop.png)
-![二次确认](screenshots/02-confirm-crop.png)
+![右键菜单](screenshots/01-menu.png)
+![二次确认](screenshots/02-confirm.png)
 
 ## 它到底删了什么 / What it deletes
 
@@ -54,6 +55,7 @@ dsh plugin --profile desktop add github:595708049/dsh-session-purger
 
 - 宿主入口 `index.js`：注册 `webServer` exact 路由。注册是**幂等**的（先查 `server.exact` 再 mount），因为桌面端禁用插件时不会卸载已注册的路由，重复注册会抛 `webserver: duplicate exact route` 导致整个插件条目不激活。
 - 浏览器入口 `client.js`：`window.__ModuleLoader__.load({ id, factory })` 外壳，通过 `contextMenus.register({ target: 'session' })` 挂右键菜单，子菜单两项（确认 / 强制），父项图标通过 keyed slot `contextMenu.icon` 注册（key `dsh-session-purger.delete`）。
+- 二次确认框是自己画的 DOM 模态框（`confirmDialog()`，z-index `2147483000`），因为客户端插件 API 没有 `dialog` / `confirm` 服务；取消走 `Esc`、点背景、点「取消」三条路径，全部在发出请求之前返回。
 - 删除顺序很重要：**先**把 sessionId 从 workspace 摘除，**再**删日志目录 —— `workspace.sessionIds` 会按 `candidateMatches` 过滤，目录一删就无法再匹配，detach 会变成空操作。
 
 ## License
