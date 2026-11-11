@@ -11,6 +11,17 @@ window.__ModuleLoader__.load({
     const React = require('react')
     const h = React.createElement
 
+    let primitives = {}
+    try {
+      primitives = require('@deepseek-ai/dsh-client-ui-primitives')
+    } catch {
+      primitives = {}
+    }
+
+    const ICON_KEY = 'dsh-session-purger.delete'
+    const DeleteIcon =
+      primitives.IconTrashOutlineRegular ?? primitives.IconArchiveOutlineRegular ?? null
+
     const ROUTE_DELETE = '/dsh-session-purger/delete'
 
     const detectZh = () => {
@@ -28,7 +39,6 @@ window.__ModuleLoader__.load({
           label: '删除会话',
           confirm: '确认删除（不可恢复）',
           force: '强制删除（含正在使用的会话）',
-          cancel: '取消',
           done: '会话已删除',
           failed: '删除失败',
           inUse: '会话正在使用中，先切换到别的会话',
@@ -38,7 +48,6 @@ window.__ModuleLoader__.load({
           label: 'Delete session',
           confirm: 'Delete permanently',
           force: 'Force delete (even while in use)',
-          cancel: 'Cancel',
           done: 'Session deleted',
           failed: 'Could not delete the session',
           inUse: 'This session is in use; switch to another one first',
@@ -62,10 +71,24 @@ window.__ModuleLoader__.load({
     }
 
     const exports = {
-      inject: ['contextMenus', 'sessions'],
+      inject: ['contextMenus', 'sessions', 'slots'],
       apply(ctx) {
         const contextMenus = ctx.get('contextMenus')
         if (contextMenus === undefined) return
+
+        // Register the icon used by the "删除会话" menu entry. The context menu
+        // only renders icons whose key is present in the `contextMenu.icon` slot.
+        const slots = ctx.get('slots')
+        if (slots !== undefined && DeleteIcon !== null) {
+          try {
+            ctx.effect(
+              () => slots.inject('contextMenu.icon', () => slots.register({ name: 'contextMenu.icon', key: ICON_KEY }, DeleteIcon)),
+              'dsh-session-purger: menu icon',
+            )
+          } catch {
+            // icon is cosmetic; never break the menu because of it
+          }
+        }
 
         const notifyFailure = (notify, reason, message) => {
           if (reason === 'in-use') notify(COPY.inUse, false)
@@ -101,6 +124,7 @@ window.__ModuleLoader__.load({
                   {
                     id: 'purge',
                     label: COPY.label,
+                    icon: { key: ICON_KEY },
                     danger: true,
                     separatorBefore: true,
                     afterContent: true,
@@ -118,11 +142,6 @@ window.__ModuleLoader__.load({
                         danger: true,
                         run: run(notify, sessionId, true),
                         failureLabel: COPY.failed,
-                      },
-                      {
-                        id: 'cancel',
-                        label: COPY.cancel,
-                        run: () => {},
                       },
                     ],
                   },
