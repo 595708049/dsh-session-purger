@@ -2,9 +2,11 @@
 
 彻底删除 DSH 会话 —— 右键左侧会话列表中的任意一条，即可把该会话从磁盘上真正删掉。
 
-## 用法
+A DSH plugin that permanently deletes session records (logs, projection cache, workspace registration) from the sidebar context menu.
 
-1. 刷新一次 Web GUI 页面（让新的客户端包加载）。
+## 用法 / Usage
+
+1. 刷新一次 Web GUI 页面（让客户端包加载）。
 2. 在左侧会话列表上**右键**任意会话 → 「删除会话」。
 3. 选择：
    - **确认删除（不可恢复）** —— 删除不在使用中的会话；
@@ -13,7 +15,7 @@
 
 删除成功后侧栏立即消失，输入框的 `@` 候选也会同步消失（两者都来自同一份会话存储列表）。
 
-## 它到底删了什么
+## 它到底删了什么 / What it deletes
 
 | 位置 | 内容 |
 | --- | --- |
@@ -21,14 +23,37 @@
 | `~/.dsh/storages/session_projcache/sessions/<sessionId>.json` | 标题 / 统计等投影缓存 |
 | `~/.dsh/storages/workspace.json` | 从工作区 `sessionIds` 摘除，并清除归档 / 固定标记 |
 
-## 安全说明
+## 安全说明 / Safety
 
-- 删除**不可恢复**，没有回收站。重要会话请先用「导出会话日志」备份。
-- 当前正在进行的会话不能直接删（接口返回 409），要么先切到别的会话，要么用「强制删除」。
-- 宿主侧接口：`POST /dsh-session-purger/delete`，body `{"id": "<sessionId>", "force": false}`；`GET /dsh-session-purger/list` 列出可删会话。
+- 删除**不可恢复**，没有回收站。重要会话请先备份 `~/.dsh/sessions/` 下对应目录。
+- 当前正在进行的会话默认不能删（接口返回 `409 in-use`），要么先切到别的会话，要么用「强制删除」。
+- 宿主侧接口：`POST /dsh-session-purger/delete`，body `{"id": "<sessionId>", "force": false}`；`GET /dsh-session-purger/list` 列出可删除的会话。
 
-## 安装状态
+## 安装 / Install
 
-已作为 profile bundle 安装于 `~/.dsh/profiles/desktop`（`file:../../dsh-plugins/dsh-session-purger`）。
-修改源码后需要把文件同步到 `~/.dsh/profiles/desktop/node_modules/dsh-session-purger/`
-（`file:` 依赖是文件复制，不是符号链接），然后关闭再打开该插件以重载。
+从本地目录安装：
+
+```sh
+dsh plugin --profile desktop add file:<path-to-this-repo>
+```
+
+或从 GitHub 安装：
+
+```sh
+dsh plugin --profile desktop add github:595708049/dsh-session-purger
+```
+
+装好后重启 DSH 或重载插件，然后刷新页面。
+
+> 本地 `file:` 依赖是**文件复制**而非符号链接，改完源码要把文件同步到
+> `~/.dsh/profiles/desktop/node_modules/dsh-session-purger/` 再重载插件。
+
+## 开发备注
+
+- 宿主入口 `index.js`：注册 `webServer` exact 路由。注册是**幂等**的（先查 `server.exact` 再 mount），因为桌面端禁用插件时不会卸载已注册的路由，重复注册会抛 `webserver: duplicate exact route` 导致整个插件条目不激活。
+- 浏览器入口 `client.js`：`window.__ModuleLoader__.load({ id, factory })` 外壳，通过 `contextMenus.register({ target: 'session' })` 挂右键菜单，子菜单三项（确认 / 强制 / 取消）。
+- 删除顺序很重要：**先**把 sessionId 从 workspace 摘除，**再**删日志目录 —— `workspace.sessionIds` 会按 `candidateMatches` 过滤，目录一删就无法再匹配，detach 会变成空操作。
+
+## License
+
+MIT
