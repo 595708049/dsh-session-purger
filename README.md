@@ -18,15 +18,15 @@ A DSH plugin that permanently deletes session records (logs, projection cache, w
 ![右键菜单](screenshots/01-menu.png)
 ![二次确认](screenshots/02-confirm.png)
 
-### 删除空白会话 / Delete blank sessions
+### 清理空白会话 / Clean blank sessions
 
-每次点「新建会话」都会留下一条只有记录头、从没输入过任何内容的**空白会话**，它们同样会出现在 `@` 候选里（没有标题时显示成裸 session-id）。在左侧**工作区标题**上右键 → 紫色的「删除空白会话」，一次清掉当前工作区的所有空白会话，同样有二次确认。
+每次点「新建会话」都会留下一条只有记录头、从没输入过任何内容的**空白会话**，它们同样会出现在 `@` 候选里（没有标题时显示成裸 session-id）。在左侧**工作区标题**上右键 → 紫色的「清理空白会话」，一次清掉当前工作区的所有空白会话，同样有二次确认。
 
-紫罗兰配色（`#a78bfa`）的图标和文字用来和上面红色的「删除工作区」区分：它删的只是空壳记录，不是整个工作区。
+紫罗兰配色（`#a78bfa`）的图标和文字用来和上面红色的「删除工作区」区分：它清掉的只是空壳记录，不是整个工作区。
 
-Right-click a **workspace header** → the violet “Delete blank sessions” to remove every never-used session in that workspace at once.
+Right-click a **workspace header** → the violet “Clean blank sessions” to remove every never-used session in that workspace at once.
 
-![删除空白会话](screenshots/03-clean.png)
+![清理空白会话](screenshots/03-clean.png)
 
 ## 它到底删了什么 / What it deletes
 
@@ -40,7 +40,7 @@ Right-click a **workspace header** → the violet “Delete blank sessions” to
 
 - 删除**不可恢复**，没有回收站。重要会话请先备份 `~/.dsh/sessions/` 下对应目录。
 - 只有**正在跑一轮**的会话默认不能删（接口返回 `409 in-use`）；等这一轮结束，或改用「强制删除」。仅仅“打开过”不算占用。
-- 「删除空白会话」只删**零事件**会话：日志解压后除记录头外没有任何内容（且不超过 1 KB）；运行中的会话会被跳过并在提示里注明。
+- 「清理空白会话」只删**零事件**会话：日志解压后除记录头外没有任何内容（且不超过 1 KB）；运行中的会话会被跳过并在提示里注明。
 - 宿主侧接口：`POST /dsh-session-purger/delete`，body `{"id": "<sessionId>", "force": false}`；`GET /dsh-session-purger/list` 列出可删除的会话（每行带 `live` 与 `running`）；`GET /dsh-session-purger/empty[?cwd=…]` 列出空白会话；`POST /dsh-session-purger/clean-empty` body `{"cwd": "<可选，限定工作区>"}` 批量清理。
 
 ## 安装 / Install
