@@ -9,8 +9,10 @@
  */
 
 import { rm, stat } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { homedir } from 'node:os'
+import { zstdDecompressSync } from 'node:zlib'
 
 export const name = 'dsh-session-purger'
 
@@ -19,6 +21,17 @@ export const inject = ['webServer']
 const ROUTE_DELETE = '/dsh-session-purger/delete'
 const ROUTE_LIST = '/dsh-session-purger/list'
 const ROUTE_STATUS = '/dsh-session-purger/client-status'
+const ROUTE_EMPTY = '/dsh-session-purger/empty'
+const ROUTE_CLEAN_EMPTY = '/dsh-session-purger/clean-empty'
+
+/**
+ * Upper bound for "empty" session logs.
+ *
+ * A session created and never used stores only the header line in
+ * `session.v4.jsonl.zstd`, which lands around 350 bytes. Anything with a single
+ * exchanged message is already several kilobytes.
+ */
+const EMPTY_MAX_BYTES = 1024
 
 function dshHome() {
   const configured = process.env.DSH_HOME
@@ -26,8 +39,7 @@ function dshHome() {
   return join(homedir(), '.dsh')
 }
 
-function sendJson(res, status, body) {
-  if (res.headersSent) {
+function sendJson(res, status, body) {  if (res.headersSent) {
     res.end()
     return
   }
@@ -52,11 +64,64 @@ async function exists(path) {
   }
 }
 
+/** Optional `?cwd=…` scope so a workspace menu only touches its own sessions. */
+function scopeOf(req) {
+  try {
+    const url = new URL(req?.url ?? '', 'http://localhost')
+    const cwd = url.searchParams.get('cwd')
+    return typeof cwd === 'string' && cwd.length > 0 ? cwd : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function samePath(left, right) {
+  if (typeof left !== 'string' || typeof right !== 'string') return false
+  const normalize = (value) => value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+  return normalize(left) === normalize(right)
+}
+
 async function collectSnapshots(ctx) {
   const persistence = ctx.get('sessionPersistence')
   if (persistence === undefined) return []
   const list = await persistence.list()
   return Array.isArray(list) ? list : []
+}
+
+/**
+ * Whether a stored Session never carried a conversation.
+ *
+ * "Empty" means the log holds nothing but its header line: creating a session
+ * writes the header immediately, and the first turn appends events. These
+ * shells accumulate every time the sidebar's "new session" button is pressed
+ * and then abandoned, and they are also what makes `@` list a pile of bare
+ * `session-…` ids (an untitled session falls back to its id as the label).
+ *
+ * The check reads the log rather than trusting the byte size alone, but the
+ * size is used as a fast reject: a log that does not fit `EMPTY_MAX_BYTES`
+ * cannot be header-only.
+ */
+async function isEmptySession(snapshot) {
+  const size = snapshot?.sizeBytes
+  if (typeof size === 'number' && size > EMPTY_MAX_BYTES) return false
+
+  const logPath = snapshot?.location?.path
+  if (typeof logPath !== 'string' || logPath.length === 0) return false
+
+  let raw
+  try {
+    raw = await readFile(logPath)
+  } catch {
+    return false
+  }
+  let text
+  try {
+    text = zstdDecompressSync(raw).toString('utf8')
+  } catch {
+    return false
+  }
+  const lines = text.split('\n').filter((line) => line.trim().length > 0)
+  return lines.length === 1 && lines[0].includes('"type":"session"')
 }
 
 function projectionCachePath(id) {
@@ -312,6 +377,56 @@ export function apply(ctx) {
         running: isRunning(ctx, item?.header?.id),
       }))
       sendJson(res, 200, { ok: true, rows })
+    })
+
+    mount(ROUTE_EMPTY, async (req, res) => {
+      const scope = scopeOf(req)
+      const snapshots = await collectSnapshots(ctx)
+      const empty = []
+      for (const item of snapshots) {
+        if (await isEmptySession(item)) {
+          if (scope !== undefined && !samePath(item?.header?.cwd, scope)) continue
+          empty.push({
+            id: item?.header?.id,
+            cwd: item?.header?.cwd,
+            createdAt: item?.header?.createdAt,
+            sizeBytes: item?.sizeBytes,
+            running: isRunning(ctx, item?.header?.id),
+          })
+        }
+      }
+      sendJson(res, 200, { ok: true, count: empty.length, rows: empty })
+    })
+
+    mount(ROUTE_CLEAN_EMPTY, async (req, res) => {
+      if (req.method !== 'POST') {
+        sendJson(res, 405, { ok: false, message: 'method not allowed' })
+        return
+      }
+      const payload = await readJson(req)
+      const scope = typeof payload?.cwd === 'string' && payload.cwd.length > 0 ? payload.cwd : undefined
+      const snapshots = await collectSnapshots(ctx)
+      const deleted = []
+      const skipped = []
+      const failed = []
+      for (const item of snapshots) {
+        const id = item?.header?.id
+        if (typeof id !== 'string' || id.length === 0) continue
+        if (!(await isEmptySession(item))) continue
+        if (scope !== undefined && !samePath(item?.header?.cwd, scope)) continue
+        if (isRunning(ctx, id)) {
+          skipped.push({ id, reason: 'running' })
+          continue
+        }
+        try {
+          const result = await removeSession(ctx, id, false)
+          if (result.status === 200) deleted.push(id)
+          else failed.push({ id, reason: result.body?.reason ?? 'error', message: result.body?.message })
+        } catch (error) {
+          failed.push({ id, reason: 'error', message: String(error?.message ?? error) })
+        }
+      }
+      sendJson(res, 200, { ok: true, deleted, deletedCount: deleted.length, skipped, failed })
     })
 
     mount(ROUTE_STATUS, async (req, res) => {

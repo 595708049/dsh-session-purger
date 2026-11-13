@@ -24,8 +24,16 @@ window.__ModuleLoader__.load({
     const ICON_KEY = 'dsh-session-purger.delete'
     const DeleteIcon =
       primitives.IconTrashOutlineRegular ?? primitives.IconArchiveOutlineRegular ?? null
+    const EMPTY_ICON_KEY = 'dsh-session-purger.empty'
+    // No broom/sparkles glyph ships with the host icon set: reuse a "tidy up" glyph.
+    const EmptyIcon =
+      primitives.IconCompactOutlineRegular ??
+      primitives.IconArchiveOffOutlineRegular ??
+      DeleteIcon
 
     const ROUTE_DELETE = '/dsh-session-purger/delete'
+    const ROUTE_EMPTY = '/dsh-session-purger/empty'
+    const ROUTE_CLEAN_EMPTY = '/dsh-session-purger/clean-empty'
 
     const detectZh = () => {
       const tag = typeof document !== 'undefined' ? document?.documentElement?.lang : ''
@@ -56,6 +64,19 @@ window.__ModuleLoader__.load({
           dialogCancel: '取消',
           dialogConfirm: '删除',
           dialogConfirmForce: '强制删除',
+          cleanLabel: '清理空会话',
+          cleanConfirm: '清理空会话',
+          cleanDialogTitle: '清理所有空会话？',
+          cleanDialogEmpty: '当前没有空会话，无需清理。',
+          cleanDialogBody: (count) =>
+            `发现 ${count} 个从未使用过的空会话（只有记录头、没有任何对话内容）。清理后它们会从侧栏和 @ 候选里彻底消失，不可恢复。`,
+          cleanDialogBodyScoped: (count) =>
+            `这个工作区里有 ${count} 个从未使用过的空会话（只有记录头、没有任何对话内容）。清理后不可恢复。`,
+          cleanDialogConfirm: '清理',
+          cleanDone: (count) => `已清理 ${count} 个空会话`,
+          cleanNothing: '没有需要清理的空会话',
+          cleanRunningSkipped: '（跳过运行中的会话）',
+          cleanFailed: '部分会话清理失败',
         }
       : {
           label: 'Delete session',
@@ -75,6 +96,19 @@ window.__ModuleLoader__.load({
           dialogCancel: 'Cancel',
           dialogConfirm: 'Delete',
           dialogConfirmForce: 'Force delete',
+          cleanLabel: 'Clean up empty sessions',
+          cleanConfirm: 'Clean up empty sessions',
+          cleanDialogTitle: 'Clean up all empty sessions?',
+          cleanDialogEmpty: 'There are no empty sessions to clean up.',
+          cleanDialogBody: (count) =>
+            `${count} session(s) were never used — only a header line, no conversation. Cleaning them removes them from the sidebar and from @ candidates permanently.`,
+          cleanDialogBodyScoped: (count) =>
+            `${count} session(s) in this workspace were never used — only a header line, no conversation. This cannot be undone.`,
+          cleanDialogConfirm: 'Clean up',
+          cleanDone: (count) => `Cleaned up ${count} empty session(s)`,
+          cleanNothing: 'No empty sessions to clean up',
+          cleanRunningSkipped: ' (running sessions skipped)',
+          cleanFailed: 'Some sessions could not be cleaned up',
         }
 
     async function deleteSession(sessionId, force) {
@@ -83,6 +117,33 @@ window.__ModuleLoader__.load({
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ id: sessionId, force }),
+      })
+      let body = {}
+      try {
+        body = await response.json()
+      } catch {
+        body = {}
+      }
+      return { status: response.status, body }
+    }
+
+    async function listEmpty(cwd) {
+      const query = typeof cwd === 'string' && cwd.length > 0 ? `?cwd=${encodeURIComponent(cwd)}` : ''
+      try {
+        const response = await fetch(`${ROUTE_EMPTY}${query}`, { credentials: 'same-origin' })
+        const body = await response.json()
+        return Array.isArray(body?.rows) ? body.rows : []
+      } catch {
+        return []
+      }
+    }
+
+    async function cleanEmpty(cwd) {
+      const response = await fetch(ROUTE_CLEAN_EMPTY, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(typeof cwd === 'string' && cwd.length > 0 ? { cwd } : {}),
       })
       let body = {}
       try {
@@ -264,11 +325,57 @@ window.__ModuleLoader__.load({
             // icon is cosmetic; never break the menu because of it
           }
         }
+        if (slots !== undefined && EmptyIcon !== null && EmptyIcon !== DeleteIcon) {
+          try {
+            ctx.effect(
+              () => slots.inject('contextMenu.icon', () => slots.register({ name: 'contextMenu.icon', key: EMPTY_ICON_KEY }, EmptyIcon)),
+              'dsh-session-purger: empty icon',
+            )
+          } catch {
+            // icon is cosmetic
+          }
+        }
 
         const notifyFailure = (notify, reason, message) => {
           if (reason === 'in-use') notify(COPY.inUse, false)
           else if (reason === 'not-found') notify(COPY.notFound, false)
           else notify(message ?? COPY.failed, false)
+        }
+
+        const runClean = (notify, scope) => async () => {
+          const rows = await listEmpty(scope)
+          if (rows.length === 0) {
+            notify(COPY.cleanNothing, true)
+            return
+          }
+          const confirmed = await confirmDialog({
+            title: COPY.cleanDialogTitle,
+            body: scope === undefined ? COPY.cleanDialogBody(rows.length) : COPY.cleanDialogBodyScoped(rows.length),
+            cancelLabel: COPY.dialogCancel,
+            confirmLabel: COPY.cleanDialogConfirm,
+            danger: true,
+          })
+          if (!confirmed) return
+
+          const { status, body } = await cleanEmpty(scope)
+          if (status !== 200 || body?.ok !== true) {
+            notify(body?.message ?? COPY.cleanFailed, false)
+            return
+          }
+          const count = typeof body?.deletedCount === 'number' ? body.deletedCount : 0
+          const skipped = Array.isArray(body?.skipped) ? body.skipped.length : 0
+          const failed = Array.isArray(body?.failed) ? body.failed.length : 0
+          if (count === 0) {
+            notify(skipped > 0 ? COPY.cleanNothing + COPY.cleanRunningSkipped : COPY.cleanNothing, true)
+          } else {
+            notify(COPY.cleanDone(count) + (skipped > 0 ? COPY.cleanRunningSkipped : ''), true)
+          }
+          if (failed > 0) notify(COPY.cleanFailed, false)
+          try {
+            ctx.get('sessions')?.refresh?.()
+          } catch {
+            // refresh is best effort
+          }
         }
 
         const run = (notify, target, force) => async () => {
@@ -298,6 +405,30 @@ window.__ModuleLoader__.load({
           }
           notifyFailure(notify, body?.reason, body?.message)
         }
+
+        ctx.effect(
+          () =>
+            contextMenus.register({
+              id: 'workspace.clean-empty-sessions',
+              target: 'workspace',
+              order: 500,
+              resolve(target) {
+                const notify = (text, success) => contextMenus.notify(text, success)
+                const cwd = typeof target?.path === 'string' && target.path.length > 0 ? target.path : undefined
+                return [
+                  {
+                    id: 'clean-empty',
+                    label: COPY.cleanLabel,
+                    icon: { key: EmptyIcon !== null ? EMPTY_ICON_KEY : ICON_KEY },
+                    separatorBefore: true,
+                    run: runClean(notify, cwd),
+                    failureLabel: COPY.cleanFailed,
+                  },
+                ]
+              },
+            }),
+          'dsh-session-purger: workspace menu',
+        )
 
         ctx.effect(
           () =>
