@@ -68,22 +68,16 @@ window.__ModuleLoader__.load({
     const COPY = zh
       ? {
           label: '删除会话',
-          confirm: '删除会话（不可恢复）',
-          force: '强制删除（含进行中会话）',
           done: '会话已删除',
           failed: '删除失败',
-          inUse: '这个会话正在运行中，请等这一轮结束后再删，或选择强制删除',
+          inUse: '这个会话正在运行中，请稍后再试',
           notFound: '没有找到这个会话的记录',
-          dialogTitle: '确定要删除这个会话吗？',
-          dialogTitleForce: '强制删除这个会话？',
+          dialogTitle: '删除这个会话？',
           dialogBody:
-            '会话日志、投影缓存与工作区登记都会被永久删除，没有回收站，也无法撤销。',
-          dialogBodyForce:
-            '这个会话可能正在使用中。强制删除后当前页面会失去该会话，正在进行的对话将无法继续。删除不可撤销。',
+            '会话日志、投影缓存与工作区登记都会被永久删除，没有回收站，也无法撤销。正在进行的会话同样会被删除，删完当前页面会失去该会话、对话无法继续。',
           dialogSession: '会话',
           dialogCancel: '取消',
           dialogConfirm: '删除',
-          dialogConfirmForce: '强制删除',
           cleanLabel: '清理空白会话',
           cleanConfirm: '清理空白会话',
           cleanDialogTitle: '清理全部空白会话？',
@@ -100,22 +94,16 @@ window.__ModuleLoader__.load({
         }
       : {
           label: 'Delete session',
-          confirm: 'Delete session (permanent)',
-          force: 'Force delete (including in-progress)',
           done: 'Session deleted',
           failed: 'Could not delete the session',
-          inUse: 'This session is running; wait for the current turn to finish, or force delete',
+          inUse: 'This session is running; try again later',
           notFound: 'No stored record for this session',
           dialogTitle: 'Delete this session?',
-          dialogTitleForce: 'Force delete this session?',
           dialogBody:
-            'The session log, projection cache and workspace registration are removed permanently. There is no trash and no undo.',
-          dialogBodyForce:
-            'This session may be in use. Force deleting it takes it away from the current page, and the conversation cannot continue. This cannot be undone.',
+            'The session log, projection cache and workspace registration are removed permanently. There is no trash and no undo. In-progress sessions are deleted too — the current page loses that session and the conversation cannot continue.',
           dialogSession: 'Session',
           dialogCancel: 'Cancel',
           dialogConfirm: 'Delete',
-          dialogConfirmForce: 'Force delete',
           cleanLabel: 'Clean blank sessions',
           cleanConfirm: 'Clean blank sessions',
           cleanDialogTitle: 'Clean all blank sessions?',
@@ -398,22 +386,24 @@ window.__ModuleLoader__.load({
           }
         }
 
-        const run = (notify, target, force) => async () => {
+        const run = (notify, target) => async () => {
           const sessionId = target?.sessionId
           if (typeof sessionId !== 'string' || sessionId.length === 0) return
 
           const confirmed = await confirmDialog({
-            title: force ? COPY.dialogTitleForce : COPY.dialogTitle,
-            body: force ? COPY.dialogBodyForce : COPY.dialogBody,
+            title: COPY.dialogTitle,
+            body: COPY.dialogBody,
             sessionTitle: target?.displayTitle,
             sessionLabel: COPY.dialogSession,
             cancelLabel: COPY.dialogCancel,
-            confirmLabel: force ? COPY.dialogConfirmForce : COPY.dialogConfirm,
+            confirmLabel: COPY.dialogConfirm,
             danger: true,
           })
           if (!confirmed) return
 
-          const { status, body } = await deleteSession(sessionId, force)
+          // One entry, strongest semantics: running sessions are deleted too, so
+          // the request always carries force. The dialog above is the only gate.
+          const { status, body } = await deleteSession(sessionId, true)
           if (status === 200 && body?.ok) {
             notify(COPY.done, true)
             try {
@@ -470,22 +460,8 @@ window.__ModuleLoader__.load({
                     danger: true,
                     separatorBefore: true,
                     afterContent: true,
-                    children: [
-                      {
-                        id: 'confirm',
-                        label: COPY.confirm,
-                        danger: true,
-                        run: run(notify, target, false),
-                        failureLabel: COPY.failed,
-                      },
-                      {
-                        id: 'force',
-                        label: COPY.force,
-                        danger: true,
-                        run: run(notify, target, true),
-                        failureLabel: COPY.failed,
-                      },
-                    ],
+                    run: run(notify, target),
+                    failureLabel: COPY.failed,
                   },
                 ]
               },
