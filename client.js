@@ -25,11 +25,31 @@ window.__ModuleLoader__.load({
     const DeleteIcon =
       primitives.IconTrashOutlineRegular ?? primitives.IconArchiveOutlineRegular ?? null
     const EMPTY_ICON_KEY = 'dsh-session-purger.empty'
-    // No broom/sparkles glyph ships with the host icon set: reuse a "tidy up" glyph.
-    const EmptyIcon =
-      primitives.IconCompactOutlineRegular ??
+    // "Blank sessions" reads as dropped records, not a bulk wipe: an archive bin
+    // with a slash. The host glyph set has no broom/sparkles icon.
+    const EmptyBaseIcon =
       primitives.IconArchiveOffOutlineRegular ??
+      primitives.IconCompactOutlineRegular ??
       DeleteIcon
+
+    // The context menu only forwards plain presentation data, so the accent
+    // colour lives in the components we own: the icon slot component and the
+    // label node below.
+    const ACCENT = '#a78bfa'
+    const EmptyIcon =
+      EmptyBaseIcon === null || EmptyBaseIcon === DeleteIcon
+        ? EmptyBaseIcon
+        : ({ size = 16, className } = {}) =>
+            h(
+              'span',
+              {
+                className,
+                style: { display: 'inline-flex', alignItems: 'center', color: ACCENT },
+                'data-dsh-session-purger': 'blank-icon',
+              },
+              h(EmptyBaseIcon, { size }),
+            )
+    const accentLabel = (text) => h('span', { style: { color: ACCENT } }, text)
 
     const ROUTE_DELETE = '/dsh-session-purger/delete'
     const ROUTE_EMPTY = '/dsh-session-purger/empty'
@@ -64,19 +84,19 @@ window.__ModuleLoader__.load({
           dialogCancel: '取消',
           dialogConfirm: '删除',
           dialogConfirmForce: '强制删除',
-          cleanLabel: '清理空会话',
-          cleanConfirm: '清理空会话',
-          cleanDialogTitle: '清理所有空会话？',
-          cleanDialogEmpty: '当前没有空会话，无需清理。',
+          cleanLabel: '删除空白会话',
+          cleanConfirm: '删除空白会话',
+          cleanDialogTitle: '删除全部空白会话？',
+          cleanDialogEmpty: '当前没有空白会话。',
           cleanDialogBody: (count) =>
-            `发现 ${count} 个从未使用过的空会话（只有记录头、没有任何对话内容）。清理后它们会从侧栏和 @ 候选里彻底消失，不可恢复。`,
+            `${count} 个会话只有记录头、从没输入过任何内容，属于空白会话。删除后它们会从侧栏和 @ 候选里彻底消失，不可恢复；有内容的会话不受影响。`,
           cleanDialogBodyScoped: (count) =>
-            `这个工作区里有 ${count} 个从未使用过的空会话（只有记录头、没有任何对话内容）。清理后不可恢复。`,
-          cleanDialogConfirm: '清理',
-          cleanDone: (count) => `已清理 ${count} 个空会话`,
-          cleanNothing: '没有需要清理的空会话',
-          cleanRunningSkipped: '（跳过运行中的会话）',
-          cleanFailed: '部分会话清理失败',
+            `这个工作区里有 ${count} 个空白会话（只有记录头、从没输入过任何内容）。删除后不可恢复，有内容的会话不受影响。`,
+          cleanDialogConfirm: '删除',
+          cleanDone: (count) => `已删除 ${count} 个空白会话`,
+          cleanNothing: '没有空白会话',
+          cleanRunningSkipped: '（跳过进行中的会话）',
+          cleanFailed: '部分会话删除失败',
         }
       : {
           label: 'Delete session',
@@ -96,19 +116,19 @@ window.__ModuleLoader__.load({
           dialogCancel: 'Cancel',
           dialogConfirm: 'Delete',
           dialogConfirmForce: 'Force delete',
-          cleanLabel: 'Clean up empty sessions',
-          cleanConfirm: 'Clean up empty sessions',
-          cleanDialogTitle: 'Clean up all empty sessions?',
-          cleanDialogEmpty: 'There are no empty sessions to clean up.',
+          cleanLabel: 'Delete blank sessions',
+          cleanConfirm: 'Delete blank sessions',
+          cleanDialogTitle: 'Delete all blank sessions?',
+          cleanDialogEmpty: 'There are no blank sessions.',
           cleanDialogBody: (count) =>
-            `${count} session(s) were never used — only a header line, no conversation. Cleaning them removes them from the sidebar and from @ candidates permanently.`,
+            `${count} session(s) contain only a header line and nothing was ever typed into them. Deleting them removes them from the sidebar and from @ candidates permanently. Sessions with content are untouched.`,
           cleanDialogBodyScoped: (count) =>
-            `${count} session(s) in this workspace were never used — only a header line, no conversation. This cannot be undone.`,
-          cleanDialogConfirm: 'Clean up',
-          cleanDone: (count) => `Cleaned up ${count} empty session(s)`,
-          cleanNothing: 'No empty sessions to clean up',
-          cleanRunningSkipped: ' (running sessions skipped)',
-          cleanFailed: 'Some sessions could not be cleaned up',
+            `${count} session(s) in this workspace are blank — only a header line, nothing ever typed. This cannot be undone. Sessions with content are untouched.`,
+          cleanDialogConfirm: 'Delete',
+          cleanDone: (count) => `Deleted ${count} blank session(s)`,
+          cleanNothing: 'No blank sessions',
+          cleanRunningSkipped: ' (in-progress sessions skipped)',
+          cleanFailed: 'Some sessions could not be deleted',
         }
 
     async function deleteSession(sessionId, force) {
@@ -418,7 +438,9 @@ window.__ModuleLoader__.load({
                 return [
                   {
                     id: 'clean-empty',
-                    label: COPY.cleanLabel,
+                    // Plain string labels are the norm; the host renders the label
+                    // node as-is, so an element is the only way to tint one entry.
+                    label: accentLabel(COPY.cleanLabel),
                     icon: { key: EmptyIcon !== null ? EMPTY_ICON_KEY : ICON_KEY },
                     separatorBefore: true,
                     run: runClean(notify, cwd),

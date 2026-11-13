@@ -18,13 +18,15 @@ A DSH plugin that permanently deletes session records (logs, projection cache, w
 ![右键菜单](screenshots/01-menu.png)
 ![二次确认](screenshots/02-confirm.png)
 
-### 清理空会话 / Clean empty sessions
+### 删除空白会话 / Delete blank sessions
 
-每次点「新建会话」都会留下一条只有记录头、没有任何对话的空会话，它们同样会出现在 `@` 候选里（没有标题时显示成裸 session-id）。在左侧**工作区标题**上右键 → 「清理空会话」，一次清掉当前工作区的所有空会话，同样有二次确认。
+每次点「新建会话」都会留下一条只有记录头、从没输入过任何内容的**空白会话**，它们同样会出现在 `@` 候选里（没有标题时显示成裸 session-id）。在左侧**工作区标题**上右键 → 紫色的「删除空白会话」，一次清掉当前工作区的所有空白会话，同样有二次确认。
 
-Right-click a **workspace header** → “Clean empty sessions” to delete every never-used session in that workspace at once.
+紫罗兰配色（`#a78bfa`）的图标和文字用来和上面红色的「删除工作区」区分：它删的只是空壳记录，不是整个工作区。
 
-![清理空会话](screenshots/03-clean.png)
+Right-click a **workspace header** → the violet “Delete blank sessions” to remove every never-used session in that workspace at once.
+
+![删除空白会话](screenshots/03-clean.png)
 
 ## 它到底删了什么 / What it deletes
 
@@ -38,8 +40,8 @@ Right-click a **workspace header** → “Clean empty sessions” to delete ever
 
 - 删除**不可恢复**，没有回收站。重要会话请先备份 `~/.dsh/sessions/` 下对应目录。
 - 只有**正在跑一轮**的会话默认不能删（接口返回 `409 in-use`）；等这一轮结束，或改用「强制删除」。仅仅“打开过”不算占用。
-- 「清理空会话」只删**零事件**会话：日志解压后除记录头外没有任何内容（且不超过 1 KB）；运行中的会话会被跳过并在提示里注明。
-- 宿主侧接口：`POST /dsh-session-purger/delete`，body `{"id": "<sessionId>", "force": false}`；`GET /dsh-session-purger/list` 列出可删除的会话（每行带 `live` 与 `running`）；`GET /dsh-session-purger/empty[?cwd=…]` 列出空会话；`POST /dsh-session-purger/clean-empty` body `{"cwd": "<可选，限定工作区>"}` 批量清理。
+- 「删除空白会话」只删**零事件**会话：日志解压后除记录头外没有任何内容（且不超过 1 KB）；运行中的会话会被跳过并在提示里注明。
+- 宿主侧接口：`POST /dsh-session-purger/delete`，body `{"id": "<sessionId>", "force": false}`；`GET /dsh-session-purger/list` 列出可删除的会话（每行带 `live` 与 `running`）；`GET /dsh-session-purger/empty[?cwd=…]` 列出空白会话；`POST /dsh-session-purger/clean-empty` body `{"cwd": "<可选，限定工作区>"}` 批量清理。
 
 ## 安装 / Install
 
@@ -64,6 +66,7 @@ dsh plugin --profile desktop add github:595708049/dsh-session-purger
 
 - 宿主入口 `index.js`：注册 `webServer` exact 路由。注册是**幂等**的（先查 `server.exact` 再 mount），因为桌面端禁用插件时不会卸载已注册的路由，重复注册会抛 `webserver: duplicate exact route` 导致整个插件条目不激活。
 - 浏览器入口 `client.js`：`window.__ModuleLoader__.load({ id, factory })` 外壳，通过 `contextMenus.register({ target: 'session' })` 挂右键菜单，子菜单两项（确认 / 强制），父项图标通过 keyed slot `contextMenu.icon` 注册（key `dsh-session-purger.delete`）。
+- 菜单项没有颜色字段：`icon` 走 keyed slot 自定义组件（外层 `span` 设 `color`，图标描边是 `currentColor`），文字则直接把带 `style.color` 的 React 元素传给 `label` —— 宿主用 `children: action.label` 渲染，不校验类型，所以不需要 MutationObserver。
 - 二次确认框是自己画的 DOM 模态框（`confirmDialog()`，z-index `2147483000`），因为客户端插件 API 没有 `dialog` / `confirm` 服务；取消走 `Esc`、点背景、点「取消」三条路径，全部在发出请求之前返回。
 - 删除顺序很重要：**先**把 sessionId 从 workspace 摘除，**再**删日志目录 —— `workspace.sessionIds` 会按 `candidateMatches` 过滤，目录一删就无法再匹配，detach 会变成空操作。
 
